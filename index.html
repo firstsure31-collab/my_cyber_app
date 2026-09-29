@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Cosmic Lab & Game</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+        }
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #05050d;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #fff;
+        }
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+        /* UI Panel Styling */
+        .ui-container {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 10;
+            background: rgba(20, 20, 35, 0.65);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            max-width: 300px;
+        }
+        h1 {
+            font-size: 1.2rem;
+            margin-bottom: 10px;
+            color: #00f3ff;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .control-group {
+            margin-bottom: 12px;
+        }
+        label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            color: #aaa;
+            margin-bottom: 4px;
+        }
+        input[type="range"] {
+            width: 100%;
+            accent-color: #00f3ff;
+            cursor: pointer;
+        }
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        button {
+            flex: 1;
+            padding: 8px 12px;
+            border: none;
+            border-radius: 6px;
+            background: linear-gradient(135deg, #6200ea, #7c4dff);
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 0.8rem;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(124, 77, 255, 0.4);
+        }
+        button.active {
+            background: linear-gradient(135deg, #00b0ff, #00e5ff);
+            color: #000;
+        }
+        .scoreboard {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 10;
+            background: rgba(20, 20, 35, 0.65);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 15px 25px;
+            border-radius: 12px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #ff0055;
+            display: none;
+        }
+        .instructions {
+            font-size: 0.75rem;
+            color: #888;
+            margin-top: 10px;
+            line-height: 1.3;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Controls Overlay -->
+    <div class="ui-container">
+        <h1>Cosmic Lab</h1>
+        
+        <div class="control-group">
+            <label>Mode Select</label>
+            <div class="btn-group" style="margin-top: 0;">
+                <button id="modeSandbox" class="active">Sandbox</button>
+                <button id="modeGame">Game Mode</button>
+            </div>
+        </div>
+
+        <div id="sandboxControls">
+            <div class="control-group">
+                <label>Particle Count <span id="valCount">300</span></label>
+                <input type="range" id="inpCount" min="50" max="1000" value="300">
+            </div>
+            
+            <div class="control-group">
+                <label>Gravity Force <span id="valGravity">1.5</span></label>
+                <input type="range" id="inpGravity" min="0.1" max="5" step="0.1" value="1.5">
+            </div>
+
+            <div class="control-group">
+                <label>Color Shift</label>
+                <input type="range" id="inpColor" min="0" max="360" value="180">
+            </div>
+        </div>
+
+        <div class="instructions" id="instructionText">
+            💡 Mouse/Touch drag korun gravity field toiri korar jonno.
+        </div>
+    </div>
+
+    <div class="scoreboard" id="scoreboard">Score: <span id="scoreVal">0</span></div>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Audio Context Synthesizer Setup
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        let audioCtx;
+
+        function playSound(type) {
+            if (!audioCtx) audioCtx = new AudioContext();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            const now = audioCtx.currentTime;
+
+            if (type === 'pop') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(400, now);
+                osc.frequency.exponentialRampToValueAtTime(800, now + 0.08);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.08);
+                osc.start(now);
+                osc.stop(now + 0.08);
+            } else if (type === 'explode') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, now);
+                osc.frequency.exponentialRampToValueAtTime(30, now + 0.2);
+                gain.gain.setValueAtTime(0.4, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.2);
+                osc.start(now);
+                osc.stop(now + 0.2);
+            }
+        }
+
+        // Window resize handling
+        let width, height;
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Mouse/Touch State
+        const mouse = { x: width / 2, y: height / 2, active: false };
+
+        window.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        });
+
+        window.addEventListener('mousedown', () => mouse.active = true);
+        window.addEventListener('mouseup', () => mouse.active = false);
+
+        window.addEventListener('touchmove', (e) => {
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
+        }, { passive: true });
+        window.addEventListener('touchstart', () => mouse.active = true);
+        window.addEventListener('touchend', () => mouse.active = false);
+
+        // UI & State Controls
+        let currentMode = 'sandbox'; // 'sandbox' or 'game'
+        let particleCount = 300;
+        let gravityStrength = 1.5;
+        let baseHue = 180;
+        let score = 0;
+
+        const inpCount = document.getElementById('inpCount');
+        const inpGravity = document.getElementById('inpGravity');
+        const inpColor = document.getElementById('inpColor');
+        const modeSandbox = document.getElementById('modeSandbox');
+        const modeGame = document.getElementById('modeGame');
+        const sandboxControls = document.getElementById('sandboxControls');
+        const scoreboard = document.getElementById('scoreboard');
+        const instructionText = document.getElementById('instructionText');
+
+        inpCount.addEventListener('input', (e) => {
+            particleCount = parseInt(e.target.value);
+            document.getElementById('valCount').innerText = particleCount;
+            initParticles();
+        });
+
+        inpGravity.addEventListener('input', (e) => {
+            gravityStrength = parseFloat(e.target.value);
+            document.getElementById('valGravity').innerText = gravityStrength;
+        });
+
+        inpColor.addEventListener('input', (e) => {
+            baseHue = parseInt(e.target.value);
+        });
+
+        modeSandbox.addEventListener('click', () => {
+            currentMode = 'sandbox';
+            modeSandbox.classList.add('active');
+            modeGame.classList.remove('active');
+            sandboxControls.style.display = 'block';
+            scoreboard.style.display = 'none';
+            instructionText.innerHTML = '💡 Mouse/Touch drag korun gravity field toiri korar jonno.';
+            initParticles();
+        });
+
+        modeGame.addEventListener('click', () => {
+            currentMode = 'game';
+            modeGame.classList.add('active');
+            modeSandbox.classList.remove('active');
+            sandboxControls.style.display = 'none';
+            scoreboard.style.display = 'block';
+            instructionText.innerHTML = '🎯 Laal Target gulo click kore neshan korun ebong score baran!';
+            score = 0;
+            document.getElementById('scoreVal').innerText = score;
+            initGame();
+        });
+
+        // Particle System Logic
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.radius = Math.random() * 2.5 + 1;
+                this.hue = baseHue + Math.random() * 40 - 20;
+                this.alpha = Math.random() * 0.5 + 0.5;
+            }
+
+            update() {
+                if (mouse.active || currentMode === 'sandbox') {
+                    let dx = mouse.x - this.x;
+                    let dy = mouse.y - this.y;
+                    let dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < 300 && dist > 10) {
+                        let force = (300 - dist) / 300;
+                        let accel = force * gravityStrength;
+                        this.vx += (dx / dist) * accel;
+                        this.vy += (dy / dist) * accel;
+                    }
+                }
+
+                // Drag / Resistance
+                this.vx *= 0.96;
+                this.vy *= 0.96;
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Screen Wrap
+                if (this.x < 0) this.x = width;
+                if (this.x > width) this.x = 0;
+                if (this.y < 0) this.y = height;
+                if (this.y > height) this.y = 0;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 100%, 60%, ${this.alpha})`;
+                ctx.shadowBlur = 8;
+                ctx.shadowColor = `hsla(${this.hue}, 100%, 50%, 0.8)`;
+                ctx.fill();
+                ctx.shadowBlur = 0; // reset for performance
+            }
+        }
+
+        // Game Specific Target Class
+        class Target {
+            constructor() {
+                this.x = Math.random() * (width - 100) + 50;
+                this.y = Math.random() * (height - 100) + 50;
+                this.radius = 0;
+                this.maxRadius = Math.random() * 25 + 20;
+                this.growing = true;
+                this.hue = 0; // Red targets
+                this.alive = true;
+            }
+
+            update() {
+                if (this.growing) {
+                    this.radius += 0.4;
+                    if (this.radius >= this.maxRadius) this.growing = false;
+                } else {
+                    this.radius -= 0.3;
+                    if (this.radius <= 0) this.alive = false; // Expired target
+                }
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, Math.max(0, this.radius), 0, Math.PI * 2);
+                ctx.strokeStyle = `hsl(${this.hue}, 100%, 50%)`;
+                ctx.lineWidth = 3;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = 'red';
+                ctx.stroke();
+                
+                // Core
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, Math.max(0, this.radius * 0.3), 0, Math.PI * 2);
+                ctx.fillStyle = '#fff';
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        let particles = [];
+        let targets = [];
+
+        function initParticles() {
+            particles = [];
+            for (let i = 0; i < particleCount; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        function initGame() {
+            particles = [];
+            targets = [];
+        }
+
+        // Game Click Detection
+        window.addEventListener('click', (e) => {
+            if (currentMode !== 'game') return;
+
+            playSound('pop');
+
+            for (let i = targets.length - 1; i >= 0; i--) {
+                let t = targets[i];
+                let dx = e.clientX - t.x;
+                let dy = e.clientY - t.y;
+                let dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist <= t.radius) {
+                    // Target Hit!
+                    score += 10;
+                    document.getElementById('scoreVal').innerText = score;
+                    playSound('explode');
+                    
+                    // Create burst explosion particles
+                    for (let p = 0; p < 20; p++) {
+                        let exp = new Particle();
+                        exp.x = t.x;
+                        exp.y = t.y;
+                        exp.vx = (Math.random() - 0.5) * 12;
+                        exp.vy = (Math.random() - 0.5) * 12;
+                        exp.hue = 50; // Yellowish explosion
+                        particles.push(exp);
+                    }
+
+                    targets.splice(i, 1);
+                    break;
+                }
+            }
+        });
+
+        // Animation Loop
+        let spawnTimer = 0;
+
+        function animate() {
+            // Motion Trail Effect
+            ctx.fillStyle = 'rgba(5, 5, 13, 0.2)';
+            ctx.fillRect(0, 0, width, height);
+
+            if (currentMode === 'sandbox') {
+                particles.forEach(p => {
+                    p.update();
+                    p.draw();
+                });
+            } else if (currentMode === 'game') {
+                // Game Mode Logic
+                spawnTimer++;
+                if (spawnTimer % 45 === 0 && targets.length < 6) {
+                    targets.push(new Target());
+                }
+
+                targets.forEach((t, index) => {
+                    t.update();
+                    t.draw();
+                    if (!t.alive) targets.splice(index, 1);
+                });
+
+                // Update explosion particles in game mode
+                particles.forEach((p, index) => {
+                    p.update();
+                    p.draw();
+                    p.alpha -= 0.02;
+                    if (p.alpha <= 0) particles.splice(index, 1);
+                });
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // Initial Start
+        initParticles();
+        animate();
+    </script>
+</body>
+</html>
